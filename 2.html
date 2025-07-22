@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PS4 MediaFire Link Extractor</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; direction: ltr; }
+    input[type="text"], button { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; }
+    #result, #outputLinks { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+    .error { color: red; font-weight: bold; }
+    .link-item { margin-bottom: 12px; }
+    input[type="checkbox"] { transform: scale(1.4); margin-right: 8px; }
+    .controls { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .controls button { flex: 1; min-width: 150px; }
+  </style>
+</head>
+<body>
+
+  <h1>Extract MediaFire Links from PS4 Game Page</h1>
+
+  <p>
+    Before using this tool, please visit and click “Request temporary access”:<br>
+    <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">https://cors-anywhere.herokuapp.com/corsdemo</a>
+  </p>
+
+  <label for="urlInput">Enter Game Page URL:</label>
+  <input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/..." />
+  <button id="fetchBtn">Extract Links</button>
+
+  <div id="result"></div>
+
+  <div class="controls" style="display:none;" id="actionControls">
+    <button id="selectAllBtn">✅ Select All</button>
+    <button id="copyBtn">📋 Copy Selected Links</button>
+    <button id="downloadBtn">💾 Download Selected .txt Files</button>
+  </div>
+
+  <div id="outputLinks" style="display:none;"></div>
+
+  <script>
+    let extractedLinks = [];
+    let allSelected = false;
+
+    async function fetchMediafireLinks() {
+      const url = document.getElementById('urlInput').value.trim();
+      const resultDiv = document.getElementById('result');
+      resultDiv.textContent = "⏳ Fetching...";
+      extractedLinks = [];
+
+      document.getElementById('actionControls').style.display = "none";
+      document.getElementById('outputLinks').style.display = "none";
+      document.getElementById('outputLinks').textContent = "";
+
+      if (!url) {
+        resultDiv.innerHTML = '<span class="error">❌ Please enter a valid URL.</span>';
+        return;
+      }
+
+      const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + url;
+
+      try {
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const links = [...doc.querySelectorAll('a[href*="mediafire.com/file/"]')];
+        if (links.length === 0) {
+          resultDiv.innerHTML = '❌ No MediaFire links found.';
+          return;
+        }
+
+        let outputHTML = `<strong>✅ MediaFire links found:</strong><br><br>`;
+
+        links.forEach((a, i) => {
+          let title = "Unknown";
+          let cusa = "CUSA????";
+
+          const wrapper = a.closest('li, p');
+          if (wrapper) {
+            const rawText = wrapper.textContent.trim();
+
+            const titleMatch = rawText.match(/^(.{4,80}?):/);
+            if (titleMatch) {
+              title = titleMatch[1].trim();
+            } else if (/backport/i.test(rawText)) {
+              title = "Backport / Fix";
+            } else if (/update/i.test(rawText)) {
+              title = "Update";
+            } else if (/v\d+\.\d+/i.test(rawText)) {
+              title = "Base Game";
+            } else {
+              title = "Game";
+            }
+
+            const matchCUSA = rawText.match(/CUSA\d+/i);
+            if (matchCUSA) cusa = matchCUSA[0].toUpperCase();
+          }
+
+          if (cusa === "CUSA????") {
+            const url = a.href;
+            const matchInLink = url.match(/[_\-](\d{5})[_\-]/);
+            if (matchInLink) cusa = "CUSA" + matchInLink[1];
+          }
+
+          const label = `${title} — ${cusa}`;
+          const link = a.href;
+
+          extractedLinks.push({ label, link, cusa });
+
+          outputHTML += `
+            <div class="link-item">
+              <label>
+                <input type="checkbox" data-index="${i}" />
+                [${i + 1}] ${label}<br>${link}
+              </label>
+            </div>`;
+        });
+
+        resultDiv.innerHTML = outputHTML;
+        document.getElementById('actionControls').style.display = "flex";
+
+      } catch (e) {
+        resultDiv.innerHTML = `<span class="error">❌ Error fetching or parsing: ${e.message}</span>`;
+      }
+    }
+
+    function toggleSelectAll() {
+      allSelected = !allSelected;
+      const checkboxes = document.querySelectorAll('#result input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = allSelected);
+      document.getElementById('selectAllBtn').textContent = allSelected ? "❎ Unselect All" : "✅ Select All";
+    }
+
+    function copySelectedLinks() {
+      const checkboxes = document.querySelectorAll('#result input[type="checkbox"]:checked');
+      if (checkboxes.length === 0) return;
+
+      const selected = Array.from(checkboxes).map(cb => {
+        const { label, link } = extractedLinks[cb.dataset.index];
+        return `[${parseInt(cb.dataset.index) + 1}] ${label}\n${link}\n`;
+      });
+
+      const text = selected.join('\n');
+      navigator.clipboard.writeText(text);
+      document.getElementById('outputLinks').style.display = "block";
+      document.getElementById('outputLinks').textContent = text;
+    }
+
+    function downloadTxt() {
+      const checkboxes = document.querySelectorAll('#result input[type="checkbox"]:checked');
+      if (checkboxes.length === 0) return;
+
+      const selected = Array.from(checkboxes).map(cb => extractedLinks[cb.dataset.index]);
+
+      const grouped = {};
+      selected.forEach(({ label, link, cusa }) => {
+        if (!grouped[cusa]) grouped[cusa] = [];
+        grouped[cusa].push(`[${label}]\n${link}\n`);
+      });
+
+      for (const cusa in grouped) {
+        const blob = new Blob([grouped[cusa].join('\n')], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${cusa}.txt`;
+        a.click();
+      }
+    }
+
+    document.getElementById('fetchBtn').addEventListener('click', fetchMediafireLinks);
+    document.getElementById('selectAllBtn').addEventListener('click', toggleSelectAll);
+    document.getElementById('copyBtn').addEventListener('click', copySelectedLinks);
+    document.getElementById('downloadBtn').addEventListener('click', downloadTxt);
+  </script>
+
+</body>
+</html>

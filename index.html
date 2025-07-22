@@ -5,72 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PS4 MediaFire Link Extractor</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
     input, button { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; }
     #result { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
     .error { color: red; font-weight: bold; }
-    .note { margin-top: 15px; font-size: 14px; color: #555; }
   </style>
 </head>
 <body>
 
-<h1>🎮 PS4 MediaFire Link Extractor</h1>
+<h1>PS4 MediaFire Link Extractor</h1>
+
+<p style="color: red; font-weight: bold;">
+⚠️ Before using, please visit 
+<a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">this page</a> 
+and click "Request temporary access".
+</p>
 
 <label for="urlInput">Enter the game page URL:</label>
-<input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/..." />
-<button id="fetchBtn">Extract Links</button>
-
-<div class="note">
-  ⚠️ You must first visit <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">https://cors-anywhere.herokuapp.com/corsdemo</a> and click "Request temporary access" before using this tool.
-</div>
+<input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/your-game-link" />
+<button id="fetchBtn">Extract MediaFire Links</button>
 
 <div id="result"></div>
 
 <script>
-  async function fetchMediafireLinks() {
-    const url = document.getElementById('urlInput').value.trim();
-    const resultDiv = document.getElementById('result');
-    resultDiv.textContent = "⏳ Fetching links...";
-    if (!url) {
-      resultDiv.innerHTML = '<span class="error">❌ Please enter a valid URL.</span>';
-      return;
-    }
+async function fetchMediafireLinks() {
+  const urlInput = document.getElementById('urlInput').value.trim();
+  const resultDiv = document.getElementById('result');
+  if (!urlInput) return resultDiv.innerHTML = '<span class="error">❌ Please enter a valid URL.</span>';
 
-    const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + url;
+  resultDiv.textContent = "⏳ Fetching MediaFire links...";
+  const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + urlInput;
 
-    try {
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const html = await response.text();
+  try {
+    const response = await fetch(proxyUrl);
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+    const html = await response.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
 
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
+    const links = [...doc.querySelectorAll('a[href*="mediafire.com/file"]')];
+    if (!links.length) return resultDiv.textContent = '❌ No MediaFire links found.';
 
-      const links = [...doc.querySelectorAll('a[href*="mediafire.com/file"]')];
-      if (links.length === 0) {
-        resultDiv.innerHTML = '❌ No MediaFire links found.';
-        return;
+    let output = '✅ MediaFire links found:\n\n';
+
+    links.forEach((a, i) => {
+      let title = "Unknown Title";
+      let cusa = "CUSA????";
+
+      const wrapper = a.closest('li, p');
+      if (wrapper) {
+        const rawText = wrapper.textContent.trim();
+
+        if (/backport/i.test(rawText)) title = "Backport / Fix";
+        else if (/update/i.test(rawText)) title = "Update";
+        else if (/v\d+\.\d+/i.test(rawText)) title = "Base Game";
+        else title = "Game";
+
+        const matchCUSA = rawText.match(/CUSA\d+/i);
+        if (matchCUSA) cusa = matchCUSA[0].toUpperCase();
       }
 
-      let output = `✅ MediaFire links found:\n\n`;
-      links.forEach((a, i) => {
-        let label = "No label";
-        // Try to get text from parent <p> or previous element
-        const parentText = a.closest("p")?.textContent?.trim();
-        if (parentText && parentText.length < 100) label = parentText;
-        else if (a.previousElementSibling) label = a.previousElementSibling.textContent.trim();
+      if (cusa === "CUSA????") {
+        const url = a.href;
+        const matchInLink = url.match(/[_\-](\d{5})[_\-]/);
+        if (matchInLink) cusa = "CUSA" + matchInLink[1];
+      }
 
-        output += `[${i + 1}] ${label}\n${a.href}\n\n`;
-      });
+      output += `[${i + 1}] ${title} — ${cusa}\n${a.href}\n\n`;
+    });
 
-      resultDiv.textContent = output;
+    resultDiv.textContent = output;
 
-    } catch (e) {
-      resultDiv.innerHTML = `<span class="error">❌ Error fetching or parsing: ${e.message}</span>`;
-    }
+  } catch (err) {
+    resultDiv.innerHTML = `<span class="error">❌ Error fetching links: ${err.message}</span>`;
   }
+}
 
-  document.getElementById('fetchBtn').addEventListener('click', fetchMediafireLinks);
+document.getElementById('fetchBtn').addEventListener('click', fetchMediafireLinks);
 </script>
 
 </body>

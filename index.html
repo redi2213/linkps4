@@ -5,52 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PS4 MediaFire Link Extractor</title>
   <style>
-    body {
-      font-family: Tahoma, sans-serif;
-      padding: 20px;
-      background: #f0f0f0;
-    }
-    input, button {
-      padding: 10px;
-      font-size: 16px;
-      margin-top: 10px;
-      width: 100%;
-      max-width: 600px;
-    }
-    #result {
-      margin-top: 20px;
-      background: white;
-      padding: 15px;
-      border-radius: 5px;
-      white-space: pre-wrap;
-    }
-    .error {
-      color: red;
-      font-weight: bold;
-    }
-    .note {
-      margin-top: 20px;
-      background: #fff3cd;
-      padding: 10px;
-      border: 1px solid #ffeeba;
-      border-radius: 5px;
-      max-width: 600px;
-    }
+    body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+    input, button { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; }
+    #result { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+    .error { color: red; font-weight: bold; }
+    .note { margin-top: 15px; font-size: 14px; color: #555; }
   </style>
 </head>
 <body>
 
-<h1>PS4 MediaFire Link Extractor</h1>
-
-<div class="note">
-  <strong>Important:</strong><br>
-  Before using this tool, you must go to the following link and click the "Request temporary access to the demo server" button:<br>
-  👉 <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">https://cors-anywhere.herokuapp.com/corsdemo</a>
-</div>
+<h1>🎮 PS4 MediaFire Link Extractor</h1>
 
 <label for="urlInput">Enter the game page URL:</label>
-<input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/freddy-spaghetti-ps4-pkg/" />
-<button id="fetchBtn">Extract MediaFire Links</button>
+<input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/..." />
+<button id="fetchBtn">Extract Links</button>
+
+<div class="note">
+  ⚠️ You must first visit <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">https://cors-anywhere.herokuapp.com/corsdemo</a> and click "Request temporary access" before using this tool.
+</div>
 
 <div id="result"></div>
 
@@ -69,37 +41,32 @@
     try {
       const response = await fetch(proxyUrl);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const text = await response.text();
+      const html = await response.text();
 
-      const mediafireRegex = /https?:\/\/www\.mediafire\.com\/file\/[^\s"'<>]+/g;
-      const foundLinks = [...new Set(text.match(mediafireRegex))];
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
 
-      if (foundLinks.length === 0) {
+      const links = [...doc.querySelectorAll('a[href*="mediafire.com/file"]')];
+      if (links.length === 0) {
         resultDiv.innerHTML = '❌ No MediaFire links found.';
         return;
       }
 
-      function extractLabel(link) {
-        const index = text.indexOf(link);
-        if (index === -1) return "Untitled";
-        const before = text.substring(Math.max(0, index - 100), index);
-        const lines = before.split('\n');
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i].trim();
-          if (line.length > 0 && !line.includes('<a') && !line.includes('href')) return line;
-        }
-        return "Untitled";
-      }
-
       let output = `✅ MediaFire links found:\n\n`;
-      foundLinks.forEach((link, i) => {
-        output += `[${i + 1}] ${extractLabel(link)}\n${link}\n\n`;
+      links.forEach((a, i) => {
+        let label = "No label";
+        // Try to get text from parent <p> or previous element
+        const parentText = a.closest("p")?.textContent?.trim();
+        if (parentText && parentText.length < 100) label = parentText;
+        else if (a.previousElementSibling) label = a.previousElementSibling.textContent.trim();
+
+        output += `[${i + 1}] ${label}\n${a.href}\n\n`;
       });
 
       resultDiv.textContent = output;
 
     } catch (e) {
-      resultDiv.innerHTML = `<span class="error">❌ Error fetching or processing links: ${e.message}</span>`;
+      resultDiv.innerHTML = `<span class="error">❌ Error fetching or parsing: ${e.message}</span>`;
     }
   }
 

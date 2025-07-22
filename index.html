@@ -1,0 +1,86 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PS4 Link Extractor</title>
+<style>
+  body { font-family: Tahoma, sans-serif; padding: 20px; }
+  textarea { width: 100%; height: 150px; }
+  .link-block { margin-bottom: 15px; }
+  .label { font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>استخراج لینک‌های MediaFire بازی‌های PS4</h1>
+<input id="urlInput" type="text" placeholder="لینک صفحه بازی را وارد کنید" style="width:100%" />
+<button onclick="fetchLinks()">استخراج لینک‌ها</button>
+
+<div id="result"></div>
+
+<script>
+async function fetchLinks() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) {
+    alert('لطفاً لینک صفحه بازی را وارد کنید.');
+    return;
+  }
+
+  const resultDiv = document.getElementById('result');
+  resultDiv.innerHTML = '⏳ در حال دریافت لینک‌ها...';
+
+  try {
+    // استفاده از پروکسی برای رفع محدودیت CORS
+    const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
+    const response = await fetch(proxyUrl);
+    if (!response.ok) throw new Error('خطا در دریافت صفحه');
+
+    const data = await response.json();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(data.contents, 'text/html');
+
+    // پیدا کردن لینک‌های mediafire
+    const links = Array.from(doc.querySelectorAll('a[href*="mediafire.com/file/"]'));
+
+    if (links.length === 0) {
+      resultDiv.innerHTML = '[❌ هیچ لینک MediaFire پیدا نشد]';
+      return;
+    }
+
+    // استخراج و گروه‌بندی لینک‌ها بر اساس CUSA
+    const grouped = {};
+
+    links.forEach(a => {
+      const href = a.href;
+      // استخراج کد CUSA از لینک
+      const cusaMatch = href.match(/_[WC]_(\d+)_/);
+      const cusa = cusaMatch ? 'CUSA' + cusaMatch[1] : 'CUSAUNKNOWN';
+
+      if (!grouped[cusa]) grouped[cusa] = [];
+
+      // پیدا کردن برچسب قبل یا اطراف لینک
+      let label = a.previousSibling?.textContent?.trim() || '';
+      if (!label) label = a.parentElement?.textContent?.trim() || 'بدون عنوان';
+
+      grouped[cusa].push({ label, href });
+    });
+
+    // ساخت خروجی HTML
+    let html = '';
+    for (const cusa in grouped) {
+      html += `<h2>${cusa}</h2>`;
+      grouped[cusa].forEach((item, idx) => {
+        html += `<div class="link-block"><span class="label">[${idx+1}] ${item.label}</span><br /><a href="${item.href}" target="_blank">${item.href}</a></div>`;
+      });
+    }
+
+    resultDiv.innerHTML = html;
+
+  } catch (error) {
+    resultDiv.innerHTML = `[❌ خطا: ${error.message}]`;
+  }
+}
+</script>
+</body>
+</html>

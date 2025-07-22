@@ -1,86 +1,86 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="fa">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PS4 Link Extractor</title>
+<title>استخراج لینک مدیافایر - PS4 Link Extractor</title>
 <style>
-  body { font-family: Tahoma, sans-serif; padding: 20px; }
-  textarea { width: 100%; height: 150px; }
-  .link-block { margin-bottom: 15px; }
-  .label { font-weight: bold; }
+  body { font-family: Tahoma, sans-serif; padding: 20px; background: #f0f0f0; }
+  input, button { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; }
+  #result { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+  .error { color: red; font-weight: bold; }
 </style>
 </head>
 <body>
-<h1>استخراج لینک‌های MediaFire بازی‌های PS4</h1>
-<input id="urlInput" type="text" placeholder="لینک صفحه بازی را وارد کنید" style="width:100%" />
-<button onclick="fetchLinks()">استخراج لینک‌ها</button>
+
+<h1>استخراج لینک‌های MediaFire از صفحه بازی</h1>
+
+<label for="urlInput">لینک صفحه بازی را وارد کنید:</label>
+<input type="text" id="urlInput" placeholder="مثلاً https://dlpsgame.com/freddy-spaghetti-ps4-pkg/" />
+<button id="fetchBtn">استخراج لینک‌ها</button>
 
 <div id="result"></div>
 
 <script>
-async function fetchLinks() {
-  const url = document.getElementById('urlInput').value.trim();
-  if (!url) {
-    alert('لطفاً لینک صفحه بازی را وارد کنید.');
-    return;
-  }
-
-  const resultDiv = document.getElementById('result');
-  resultDiv.innerHTML = '⏳ در حال دریافت لینک‌ها...';
-
-  try {
-    // استفاده از پروکسی برای رفع محدودیت CORS
-    const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error('خطا در دریافت صفحه');
-
-    const data = await response.json();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(data.contents, 'text/html');
-
-    // پیدا کردن لینک‌های mediafire
-    const links = Array.from(doc.querySelectorAll('a[href*="mediafire.com/file/"]'));
-
-    if (links.length === 0) {
-      resultDiv.innerHTML = '[❌ هیچ لینک MediaFire پیدا نشد]';
+  async function fetchMediafireLinks() {
+    const url = document.getElementById('urlInput').value.trim();
+    const resultDiv = document.getElementById('result');
+    resultDiv.textContent = "⏳ در حال دریافت لینک‌ها...";
+    if (!url) {
+      resultDiv.innerHTML = '<span class="error">❌ لطفاً یک لینک معتبر وارد کنید.</span>';
       return;
     }
 
-    // استخراج و گروه‌بندی لینک‌ها بر اساس CUSA
-    const grouped = {};
+    // استفاده از cors-anywhere پروکسی (قبلش برید و دسترسی بگیرید: https://cors-anywhere.herokuapp.com/corsdemo)
+    const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + url;
 
-    links.forEach(a => {
-      const href = a.href;
-      // استخراج کد CUSA از لینک
-      const cusaMatch = href.match(/_[WC]_(\d+)_/);
-      const cusa = cusaMatch ? 'CUSA' + cusaMatch[1] : 'CUSAUNKNOWN';
+    try {
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const text = await response.text();
 
-      if (!grouped[cusa]) grouped[cusa] = [];
+      // استخراج لینک‌ها با regex از متن html
+      const mediafireRegex = /https?:\/\/www\.mediafire\.com\/file\/[^\s"'<>]+/g;
+      const foundLinks = [...new Set(text.match(mediafireRegex))]; // حذف تکراری ها
 
-      // پیدا کردن برچسب قبل یا اطراف لینک
-      let label = a.previousSibling?.textContent?.trim() || '';
-      if (!label) label = a.parentElement?.textContent?.trim() || 'بدون عنوان';
+      if (foundLinks.length === 0) {
+        resultDiv.innerHTML = '❌ هیچ لینک MediaFire پیدا نشد.';
+        return;
+      }
 
-      grouped[cusa].push({ label, href });
-    });
+      // حالا سعی می‌کنیم label ها رو هم استخراج کنیم ساده با یافتن خطوط اطراف لینک
+      // چون HTML کامل نیست در fetch نمی‌تونیم از DOM استفاده کنیم، پس یک روش ساده regex داریم
 
-    // ساخت خروجی HTML
-    let html = '';
-    for (const cusa in grouped) {
-      html += `<h2>${cusa}</h2>`;
-      grouped[cusa].forEach((item, idx) => {
-        html += `<div class="link-block"><span class="label">[${idx+1}] ${item.label}</span><br /><a href="${item.href}" target="_blank">${item.href}</a></div>`;
+      // یک تابع کمکی برای یافتن label ها در متن (با خطوط اطراف لینک)
+      function extractLabel(link) {
+        // جستجو برای خط قبل از لینک که ممکنه label باشه
+        const index = text.indexOf(link);
+        if (index === -1) return "بدون عنوان";
+        // حدود 100 کاراکتر قبل از لینک رو میگیریم
+        const before = text.substring(Math.max(0, index - 100), index);
+        // سعی میکنیم آخرین خط قبل از لینک رو به عنوان label برگردانیم
+        const lines = before.split('\n');
+        for (let i = lines.length -1; i >= 0; i--) {
+          const line = lines[i].trim();
+          if (line.length > 0 && !line.includes('<a') && !line.includes('href')) return line;
+        }
+        return "بدون عنوان";
+      }
+
+      let output = `✅ لینک‌های MediaFire پیدا شده:\n\n`;
+      foundLinks.forEach((link, i) => {
+        output += `[${i+1}] ${extractLabel(link)}\n${link}\n\n`;
       });
+
+      resultDiv.textContent = output;
+
+    } catch (e) {
+      resultDiv.innerHTML = `<span class="error">❌ خطا در دریافت یا پردازش لینک‌ها: ${e.message}</span>`;
     }
-
-    resultDiv.innerHTML = html;
-
-  } catch (error) {
-    resultDiv.innerHTML = `[❌ خطا: ${error.message}]`;
   }
-}
+
+  document.getElementById('fetchBtn').addEventListener('click', fetchMediafireLinks);
 </script>
+
 </body>
 </html>

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PS4 MediaFire Link Extractor with Search & Autocomplete</title>
+<style>
+  body { font-family: Tahoma, sans-serif; padding: 20px; background: #f0f0f0; }
+  input, button, select { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; box-sizing: border-box; }
+  #result { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+  label { display: flex; align-items: center; margin: 8px 0; }
+  input[type="checkbox"] { width: 24px; height: 24px; margin-right: 12px; cursor: pointer; }
+  a { color: blue; text-decoration: underline; }
+  .controls { margin-top: 15px; }
+</style>
+</head>
+<body>
+
+<h1>PS4 MediaFire Link Extractor</h1>
+
+<label for="gameSearch">Search or select a game:</label>
+<input type="text" id="gameSearch" placeholder="Type game name or CUSA code" autocomplete="off" list="gamesList" />
+<datalist id="gamesList"></datalist>
+
+<button id="searchBtn">Search & Extract Links</button>
+
+<div class="controls">
+  <label><input type="checkbox" id="selectAll" /> Select All</label>
+  <button id="copyBtn">Copy Selected Links</button>
+  <button id="downloadBtn">Download TXT</button>
+</div>
+
+<div id="linksContainer"></div>
+
+<script>
+const corsProxy = 'https://cors-anywhere.herokuapp.com/';
+const listAllGamesUrl = 'https://dlpsgame.com/list-all-game-ps4/';
+
+let allGames = [];  // will hold {name:..., url:...}
+let currentLinks = [];  // extracted links with {label, cusa, url, selected}
+
+// Fetch all game names + URLs for autocomplete on page load
+async function fetchAllGames() {
+  try {
+    const res = await fetch(corsProxy + listAllGamesUrl);
+    const text = await res.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, 'text/html');
+    const links = doc.querySelectorAll('main a[href^="https://dlpsgame.com/"]');
+    allGames = [];
+    links.forEach(a => {
+      const href = a.href;
+      const name = a.textContent.trim();
+      if(name && href && !href.includes('list-all-game-ps4')) {
+        allGames.push({name, url: href});
+      }
+    });
+    // Fill datalist
+    const dataList = document.getElementById('gamesList');
+    allGames.forEach(g => {
+      const option = document.createElement('option');
+      option.value = g.name;
+      dataList.appendChild(option);
+    });
+  } catch(e) {
+    console.error("Error fetching game list:", e);
+  }
+}
+
+// Extract MediaFire links + labels + CUSA code from search results page
+async function extractLinksFromSearch(query) {
+  const searchUrl = `https://dlpsgame.com/?s=${encodeURIComponent(query)}`;
+  const res = await fetch(corsProxy + searchUrl);
+  const text = await res.text();
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'text/html');
+  
+  // Find first post link in results
+  const postLink = doc.querySelector('main article h2 a');
+  if(!postLink) {
+    alert("No results found for your query.");
+    return [];
+  }
+
+  // Fetch post page content
+  const postRes = await fetch(corsProxy + postLink.href);
+  const postText = await postRes.text();
+  const postDoc = parser.parseFromString(postText, 'text/html');
+
+  // Extract mediafire links and related info
+  const anchors = postDoc.querySelectorAll('a[href*="mediafire.com/file"]');
+  let foundLinks = [];
+  anchors.forEach(a => {
+    const url = a.href;
+    // Try to get label (the text before ':')
+    let label = "No Label";
+    if(a.previousSibling && a.previousSibling.textContent) {
+      const text = a.previousSibling.textContent.trim();
+      if(text.includes(':')) {
+        label = text.split(':')[0].trim();
+      }
+    }
+    // Find CUSA code in nearby text
+    // We'll check the parent element text for pattern CUSAxxxx
+    let cusa = "UNKNOWN";
+    const parentText = a.parentElement ? a.parentElement.textContent : "";
+    const cusaMatch = parentText.match(/CUSA\d{5}/i);
+    if(cusaMatch) cusa = cusaMatch[0].toUpperCase();
+    
+    foundLinks.push({label, cusa, url, selected: true});
+  });
+
+  if(foundLinks.length === 0) alert("No MediaFire links found in the selected game page.");
+  return foundLinks;
+}
+
+function renderLinks() {
+  const container = document.getElementById('linksContainer');
+  container.innerHTML = '';
+  currentLinks.forEach((link, i) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = link.selected;
+    checkbox.style.width = '24px';
+    checkbox.style.height = '24px';
+    checkbox.addEventListener('change', () => {
+      currentLinks[i].selected = checkbox.checked;
+    });
+    const a = document.createElement('a');
+    a.href = link.url;
+    a.target = "_blank";
+    a.textContent = `[${i+1}] ${link.label} — ${link.cusa}`;
+    label.appendChild(checkbox);
+    label.appendChild(a);
+    container.appendChild(label);
+  });
+}
+
+function copySelected() {
+  const selectedLinks = currentLinks.filter(l => l.selected).map(l => `${l.label} — ${l.cusa}\n${l.url}`);
+  if(selectedLinks.length === 0) {
+    alert("Please select at least one link.");
+    return;
+  }
+  const text = selectedLinks.join('\n\n');
+  navigator.clipboard.writeText(text).then(() => {
+    alert("Selected links copied to clipboard.");
+  });
+}
+
+function downloadTxt() {
+  const selectedLinks = currentLinks.filter(l => l.selected);
+  if(selectedLinks.length === 0) {
+    alert("Please select at least one link.");
+    return;
+  }
+  // Save to txt file named after first selected link's CUSA code
+  const cusaName = selectedLinks[0].cusa || "links";
+  const content = selectedLinks.map(l => `${l.label} — ${l.cusa}\n${l.url}`).join('\n\n');
+  const blob = new Blob([content], {type: "text/plain;charset=utf-8"});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${cusaName}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+document.getElementById('searchBtn').addEventListener('click', async () => {
+  const query = document.getElementById('gameSearch').value.trim();
+  if(!query) {
+    alert("Please enter a game name or CUSA code.");
+    return;
+  }
+  document.getElementById('linksContainer').textContent = 'Loading...';
+  currentLinks = await extractLinksFromSearch(query);
+  renderLinks();
+});
+
+document.getElementById('copyBtn').addEventListener('click', copySelected);
+document.getElementById('downloadBtn').addEventListener('click', downloadTxt);
+document.getElementById('selectAll').addEventListener('change', e => {
+  const checked = e.target.checked;
+  currentLinks.forEach(l => l.selected = checked);
+  renderLinks();
+});
+
+// Load all games for autocomplete on page load
+fetchAllGames();
+</script>
+
+</body>
+</html>

@@ -1,23 +1,56 @@
 <!DOCTYPE html>
-<html lang="fa">
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>استخراج لینک مدیافایر - PS4 Link Extractor</title>
-<style>
-  body { font-family: Tahoma, sans-serif; padding: 20px; background: #f0f0f0; }
-  input, button { padding: 10px; font-size: 16px; margin-top: 10px; width: 100%; max-width: 600px; }
-  #result { margin-top: 20px; background: white; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
-  .error { color: red; font-weight: bold; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PS4 MediaFire Link Extractor</title>
+  <style>
+    body {
+      font-family: Tahoma, sans-serif;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin-top: 10px;
+      width: 100%;
+      max-width: 600px;
+    }
+    #result {
+      margin-top: 20px;
+      background: white;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+    .note {
+      margin-top: 20px;
+      background: #fff3cd;
+      padding: 10px;
+      border: 1px solid #ffeeba;
+      border-radius: 5px;
+      max-width: 600px;
+    }
+  </style>
 </head>
 <body>
 
-<h1>استخراج لینک‌های MediaFire از صفحه بازی</h1>
+<h1>PS4 MediaFire Link Extractor</h1>
 
-<label for="urlInput">لینک صفحه بازی را وارد کنید:</label>
-<input type="text" id="urlInput" placeholder="مثلاً https://dlpsgame.com/freddy-spaghetti-ps4-pkg/" />
-<button id="fetchBtn">استخراج لینک‌ها</button>
+<div class="note">
+  <strong>Important:</strong><br>
+  Before using this tool, you must go to the following link and click the "Request temporary access to the demo server" button:<br>
+  👉 <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank">https://cors-anywhere.herokuapp.com/corsdemo</a>
+</div>
+
+<label for="urlInput">Enter the game page URL:</label>
+<input type="text" id="urlInput" placeholder="e.g. https://dlpsgame.com/freddy-spaghetti-ps4-pkg/" />
+<button id="fetchBtn">Extract MediaFire Links</button>
 
 <div id="result"></div>
 
@@ -25,13 +58,12 @@
   async function fetchMediafireLinks() {
     const url = document.getElementById('urlInput').value.trim();
     const resultDiv = document.getElementById('result');
-    resultDiv.textContent = "⏳ در حال دریافت لینک‌ها...";
+    resultDiv.textContent = "⏳ Fetching links...";
     if (!url) {
-      resultDiv.innerHTML = '<span class="error">❌ لطفاً یک لینک معتبر وارد کنید.</span>';
+      resultDiv.innerHTML = '<span class="error">❌ Please enter a valid URL.</span>';
       return;
     }
 
-    // استفاده از cors-anywhere پروکسی (قبلش برید و دسترسی بگیرید: https://cors-anywhere.herokuapp.com/corsdemo)
     const proxyUrl = 'https://cors-anywhere.herokuapp.com/' + url;
 
     try {
@@ -39,43 +71,35 @@
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const text = await response.text();
 
-      // استخراج لینک‌ها با regex از متن html
       const mediafireRegex = /https?:\/\/www\.mediafire\.com\/file\/[^\s"'<>]+/g;
-      const foundLinks = [...new Set(text.match(mediafireRegex))]; // حذف تکراری ها
+      const foundLinks = [...new Set(text.match(mediafireRegex))];
 
       if (foundLinks.length === 0) {
-        resultDiv.innerHTML = '❌ هیچ لینک MediaFire پیدا نشد.';
+        resultDiv.innerHTML = '❌ No MediaFire links found.';
         return;
       }
 
-      // حالا سعی می‌کنیم label ها رو هم استخراج کنیم ساده با یافتن خطوط اطراف لینک
-      // چون HTML کامل نیست در fetch نمی‌تونیم از DOM استفاده کنیم، پس یک روش ساده regex داریم
-
-      // یک تابع کمکی برای یافتن label ها در متن (با خطوط اطراف لینک)
       function extractLabel(link) {
-        // جستجو برای خط قبل از لینک که ممکنه label باشه
         const index = text.indexOf(link);
-        if (index === -1) return "بدون عنوان";
-        // حدود 100 کاراکتر قبل از لینک رو میگیریم
+        if (index === -1) return "Untitled";
         const before = text.substring(Math.max(0, index - 100), index);
-        // سعی میکنیم آخرین خط قبل از لینک رو به عنوان label برگردانیم
         const lines = before.split('\n');
-        for (let i = lines.length -1; i >= 0; i--) {
+        for (let i = lines.length - 1; i >= 0; i--) {
           const line = lines[i].trim();
           if (line.length > 0 && !line.includes('<a') && !line.includes('href')) return line;
         }
-        return "بدون عنوان";
+        return "Untitled";
       }
 
-      let output = `✅ لینک‌های MediaFire پیدا شده:\n\n`;
+      let output = `✅ MediaFire links found:\n\n`;
       foundLinks.forEach((link, i) => {
-        output += `[${i+1}] ${extractLabel(link)}\n${link}\n\n`;
+        output += `[${i + 1}] ${extractLabel(link)}\n${link}\n\n`;
       });
 
       resultDiv.textContent = output;
 
     } catch (e) {
-      resultDiv.innerHTML = `<span class="error">❌ خطا در دریافت یا پردازش لینک‌ها: ${e.message}</span>`;
+      resultDiv.innerHTML = `<span class="error">❌ Error fetching or processing links: ${e.message}</span>`;
     }
   }
 
